@@ -20,6 +20,12 @@ using Windows.Devices.Radios;
 using Windows.Foundation.Collections;
 using Windows.Storage.Streams;
 
+// TODO: Datastructure which holds batteryService, batteryCharacteristics, connectedGamepads for all devices
+//       Loop over all of them
+//       discover new devices
+//       dispose old devices
+//       fix icons
+
 namespace XBatteryStatus
 {
     public class MyApplicationContext : ApplicationContext
@@ -33,13 +39,14 @@ namespace XBatteryStatus
         private ToolStripMenuItem hideButton;
         private ToolStripMenuItem numbersButton;
 
-        private Timer UpdateTimer;
+        // private Timer UpdateTimer;
         private Timer DiscoverTimer;
         private Timer HideTimeoutTimer;
         private Timer SoftwareUpdateTimer;
 
         public List<BluetoothLEDevice> pairedGamepads = new List<BluetoothLEDevice>();
-        public BluetoothLEDevice connectedGamepad;
+        public List<BluetoothLEDevice> connectedGamepads = new List<BluetoothLEDevice>();
+        // public BluetoothLEDevice connectedGamepad;
         public GattDeviceService batteryService;
         public GattCharacteristic batteryCharacteristic;
         public Radio bluetoothRadio;
@@ -111,14 +118,15 @@ namespace XBatteryStatus
             InitializeBluetoothRadioAsync();
             FindBleController();
 
-            UpdateTimer = new Timer();
-            UpdateTimer.Tick += new EventHandler((x, y) => Update());
-            UpdateTimer.Interval = 10000;
-            UpdateTimer.Start();
+            // UpdateTimer = new Timer();
+            // UpdateTimer.Tick += new EventHandler((x, y) => Update());
+            // UpdateTimer.Interval = 10000;
+            // UpdateTimer.Start();
 
             DiscoverTimer = new Timer();
             DiscoverTimer.Tick += new EventHandler((x, y) => FindBleController());
-            DiscoverTimer.Interval = 60000;
+            // DiscoverTimer.Interval = 60000;
+            DiscoverTimer.Interval = 10000;
             DiscoverTimer.Start();
         }
 
@@ -236,6 +244,7 @@ namespace XBatteryStatus
 
         async private void FindBleController()
         {
+            notifyIcon.Text = "XBatteryStatus:";
             if (bluetoothRadio?.State == RadioState.On)
             {
                 List<BluetoothLEDevice> foundGamepads = new List<BluetoothLEDevice>();
@@ -249,7 +258,8 @@ namespace XBatteryStatus
                     {
                         bleDevice = await BluetoothLEDevice.FromIdAsync(device.Id);
 
-                        if (bleDevice?.Appearance.SubCategory == BluetoothLEAppearanceSubcategories.Gamepad) //get the gamepads
+                        // if (bleDevice?.Appearance.SubCategory == BluetoothLEAppearanceSubcategories.Gamepad) //get the gamepads
+                        if (bleDevice != null)
                         {
                             using (GattDeviceService service = bleDevice.GetGattService(new Guid("0000180f-0000-1000-8000-00805f9b34fb")))
                             {
@@ -304,7 +314,7 @@ namespace XBatteryStatus
                 }
                 else
                 {
-                    var connectedGamepads = pairedGamepads.Where(x => x.ConnectionStatus == BluetoothConnectionStatus.Connected).ToList();
+                    connectedGamepads = pairedGamepads.Where(x => x.ConnectionStatus == BluetoothConnectionStatus.Connected).ToList();
 
                     if (connectedGamepads.Count == 0)
                     {
@@ -313,7 +323,10 @@ namespace XBatteryStatus
                     }
                     else
                     {
-                        ConnectGamepad(connectedGamepads.First());
+                        // ConnectGamepad(connectedGamepads.First());
+                        foreach (var connectedGamepad in connectedGamepads) {
+                            ConnectGamepad(connectedGamepad);
+                        }
                     }
                 }
             }
@@ -323,7 +336,9 @@ namespace XBatteryStatus
                 notifyIcon.Text = "XBatteryStatus: Bluetooth is turned off";
             }
 
-            Update();
+            foreach (var connectedGamepad in connectedGamepads) {
+                Update(connectedGamepad);
+            }
         }
 
         private void BluetoothRadio_StateChanged(Radio sender, object args)
@@ -337,7 +352,7 @@ namespace XBatteryStatus
             {
                 ConnectGamepad(sender);
             }
-            else if (sender == connectedGamepad)
+            else if (connectedGamepads.Contains(sender))
             {
                 FindBleController(); //another controller might be connected
             }
@@ -354,7 +369,7 @@ namespace XBatteryStatus
                         batteryService.Dispose();
                         batteryService = null;
                     }
-                    
+
                     batteryCharacteristic = null;
 
                     GattDeviceService service = device.GetGattService(new Guid("0000180f-0000-1000-8000-00805f9b34fb"));
@@ -367,7 +382,7 @@ namespace XBatteryStatus
                             connectedGamepad = device;
                             batteryService = service;
                             batteryCharacteristic = characteristic;
-                            Update();
+                            Update(device);
                         }
                         else
                         {
@@ -379,21 +394,21 @@ namespace XBatteryStatus
             }
         }
 
-        public void Update()
+        public void Update(BluetoothLEDevice device)
         {
-            bool enabled = (bluetoothRadio?.State == RadioState.On && connectedGamepad?.ConnectionStatus == BluetoothConnectionStatus.Connected) || HideTimeoutTimer.Enabled;
+            bool enabled = (bluetoothRadio?.State == RadioState.On && device?.ConnectionStatus == BluetoothConnectionStatus.Connected) || HideTimeoutTimer.Enabled;
             notifyIcon.Visible = Properties.Settings.Default.hide ? enabled : true;
             if (enabled)
             {
-                ReadBattery();
+                ReadBattery(device);
             }
         }
 
-        private async void ReadBattery()
+        private async void ReadBattery(BluetoothLEDevice device)
         {
             try
             {
-                if (connectedGamepad?.ConnectionStatus == BluetoothConnectionStatus.Connected && batteryCharacteristic != null)
+                if (device?.ConnectionStatus == BluetoothConnectionStatus.Connected && batteryCharacteristic != null)
                 {
                     GattReadResult result = await batteryCharacteristic.ReadValueAsync();
 
@@ -401,8 +416,11 @@ namespace XBatteryStatus
                     {
                         var reader = DataReader.FromBuffer(result.Value);
                         int val = reader.ReadByte();
-                        string notify = val.ToString() + "% - " + connectedGamepad?.Name;
-                        notifyIcon.Text = "XBatteryStatus: " + notify;
+                        string notify = val.ToString() + "% - " + device?.Name;
+                        // notifyIcon.Text = "XBatteryStatus: " + notify;
+                        notifyIcon.Text += "\n" + notify;
+                        Log("**** notifyIcon.Text ----");
+                        Log(notifyIcon.Text);
 
                         SetIcon(val);
 
@@ -457,9 +475,9 @@ namespace XBatteryStatus
             }
 
             notifyIcon.Visible = false;
-            
+
             logSemaphore?.Dispose();
-            
+
             ToastNotificationManagerCompat.History.Clear();
             Application.Exit();
         }
@@ -555,14 +573,14 @@ namespace XBatteryStatus
         {
             Icon oldIcon = notifyIcon.Icon;
             IntPtr oldHandle = IntPtr.Zero;
-            
+
             if (oldIcon != null)
             {
                 oldHandle = oldIcon.Handle;
             }
-            
+
             notifyIcon.Icon = GetIcon(val, s);
-            
+
             if (oldIcon != null)
             {
                 oldIcon.Dispose();

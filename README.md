@@ -5,6 +5,16 @@
 
 A clean and lightweight tray app that displays the battery level of most bluetooth game controllers
 
+---
+
+This is a fork where I try to extend it for multiple bluetooth devices to show the battery status not
+only for one game controller, but this is a lot of work, because the current implementation shows only
+the status of one game controller.
+
+I created new icons based on font awesom but they did not really fit, so this also needs to be changed.
+
+---
+
 ![Screenshot](/Icons/Screenshot1.png)
 
 ![Tray Icon](/Icons/png/icon70.png)
